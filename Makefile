@@ -2,7 +2,7 @@ AUDIOGROUP = $(shell getent group audio | cut -d: -f3)
 GRIDGROUP = $(shell getent group dialout | cut -d: -f3)
 
 build:
-	docker build -t norns-docker .
+	podman build -t norns-docker .
 
 scratch:
 	curl https://getcroc.schollz.com | bash
@@ -19,8 +19,8 @@ scratch:
 	dircolors /tmp/dircolors.monokai >> ~/.zshrc
 
 run: dust
-	docker build --rm -t norns-docker .
-	docker run --rm -it \
+	podman build --rm -t norns-docker .
+	podman run --rm -it \
 		--cap-add=SYS_NICE \
 		--cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
 		--ulimit rtprio=95 --ulimit memlock=-1 --shm-size=256m \
@@ -32,16 +32,24 @@ run: dust
 		-p 8000:8000 \
 		-v `pwd`/dust:/home/we/dust \
 		-v `pwd`/jackdrc:/etc/jackdrc \
-		-p 10111:10111/udp \
+		-v /run/user/1000/pipewire-0:/run/user/1000/pipewire-0 \
+		-e PIPEWIRE_RUNTIME_DIR=/run/user/1000 \
+		-e PIPEWIRE_REMOTE=pipewire-0 \
+		-e LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/pipewire-0.3/jack/ \
 		--device /dev/snd \
+		-e XDG_RUNTIME_DIR=/run/user/1000 \
+		-p 10111:10111/udp \
 		--group-add $(AUDIOGROUP) \
+		--user we \
+		--userns=keep-id \
 		norns-docker 
+#		--user $(id -u):$(id -g) \
 # 		--device /dev/ttyUSB0 \
 # 		--group-add $(GRIDGROUP) \
 
 rund: dust
-	docker build --rm -t norns-docker .
-	docker run -d --rm -it \
+	podman build --rm -t norns-docker .
+	podman run -d --rm -it \
 		--cap-add=SYS_NICE \
 		--cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
 		--ulimit rtprio=95 --ulimit memlock=-1 --shm-size=256m \
@@ -59,11 +67,11 @@ rund: dust
 		norns-docker 
 # 		--device /dev/ttyUSB0 \
 # 		--group-add $(GRIDGROUP) \
-	docker logs --follow $(docker container ls -q)
+	podman logs --follow $(docker container ls -q)
 
 
 pub:
-	docker run -d --rm -it \
+	podman run -d --rm -it \
 		--cap-add=SYS_NICE \
 		--cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
 		--ulimit rtprio=95 --ulimit memlock=-1 --shm-size=256m \
@@ -78,7 +86,7 @@ pub:
 		norns-docker 
 
 play.norns.online:
-	docker run -d --rm -it \
+	podman run -d --rm -it \
 		--cap-add=SYS_NICE \
 		--cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
 		--ulimit rtprio=95 --ulimit memlock=-1 --shm-size=256m \

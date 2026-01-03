@@ -53,6 +53,7 @@ RUN apt-get install -y \
             pkg-config \
             python3-dev \
             unzip \
+            pipewire-jack \
             wget \ 
             cdbs libmad0-dev libid3tag0-dev libsndfile1-dev libgd-dev libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev git make cmake gcc g++ libmad0-dev \
             libid3tag0-dev libsndfile1-dev libgd-dev libboost-filesystem-dev \
@@ -195,9 +196,9 @@ RUN tar -xJf /tmp/node.tar.xz -C /home/we/node
 RUN mv /home/we/node/node-*/* /home/we/node/
 RUN mkdir -p /home/we/node/node_modules
 RUN npm config set prefix "/home/we/node/node_modules"
-RUN npm install -g npm yarn
 RUN npm -v
 RUN node -v
+RUN npm install -g yarn
 
 # MAIDEN - build release then install it.
 RUN git clone $MAIDEN_REPO maiden_src && \
