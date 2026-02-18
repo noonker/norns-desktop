@@ -23,7 +23,8 @@ run: dust
 	podman run --rm -it \
 		--cap-add=SYS_NICE \
 		--cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
-		--ulimit rtprio=95 --ulimit memlock=-1 --shm-size=256m \
+		--security-opt label=disable \
+		--ulimit memlock=-1 --shm-size=256m \
 		-p 5000:5000 \
 		-p 5555:5555 \
 		-p 5556:5556 \
@@ -40,12 +41,13 @@ run: dust
 		-e XDG_RUNTIME_DIR=/run/user/1000 \
 		-p 10111:10111/udp \
 		--group-add $(AUDIOGROUP) \
+		--device /dev/ttyACM1 \
+		--group-add $(GRIDGROUP) \
+		-v /run/udev:/run/udev:ro \
 		--user we \
 		--userns=keep-id \
-		norns-docker 
-#		--user $(id -u):$(id -g) \
-# 		--device /dev/ttyUSB0 \
-# 		--group-add $(GRIDGROUP) \
+		norns-docker
+
 
 rund: dust
 	podman build --rm -t norns-docker .

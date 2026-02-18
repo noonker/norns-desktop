@@ -1,0 +1,358 @@
+/**
+ * Copyright (c) 2010 William Light <wrl@illest.net>
+ * Copyright (c) 2013 Nedko Arnaudov <nedko@arnaudov.name>
+ * 
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+#define _GNU_SOURCE
+
+#include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#include <monome.h>
+#include "internal.h"
+#include "platform.h"
+#include "rotation.h"
+#include "devices.h"
+
+#ifndef LIBSUFFIX
+#define LIBSUFFIX ".so"
+#endif
+
+#ifndef LIBDIR
+#define LIBDIR "/usr/lib"
+#endif
+
+/**
+ * private
+ */
+
+static monome_devmap_t *map_serial_to_device(const char *serial) {
+	monome_devmap_t *m;
+	int serialnum;
+
+	for( m = mapping; m->sermatch; m++ )
+		if( sscanf(serial, m->sermatch, &serialnum) )
+			return m;
+
+	return NULL;
+}
+
+/**
+ * public
+ */
+
+
+monome_t *monome_open(const char *dev, ...) {
+    monome_t *monome;
+    monome_devmap_t *m;
+    va_list arguments;
+    char *serial, *proto;
+    int error;
+
+    printf("AAAAAAAAAA");
+    if (!dev) {
+        printf("Debug: Device string is NULL.\n");
+        return NULL;
+    }
+    printf("Debug: Device string: %s\n", dev);
+
+    serial = NULL;
+    m = NULL;
+
+    /* first let's figure out which protocol to use */
+    if (!strstr(dev, "://")) {
+        printf("Debug: Assuming device is a tty, probing for serial...\n");
+
+        if (!(serial = monome_platform_get_dev_serial(dev))) {
+            printf("Debug: Failed to get serial for device.\n");
+            return NULL;
+        }
+        printf("Debug: Retrieved serial: %s\n", serial);
+
+        if ((m = map_serial_to_device(serial))) {
+            proto = m->proto;
+            printf("Debug: Mapped serial to device, protocol: %s\n", proto);
+        } else {
+            printf("Debug: Failed to map serial to device.\n");
+            return NULL;
+        }
+    } else {
+        /* otherwise, we'll assume that what we have is an OSC URL. */
+        proto = "osc";
+        printf("Debug: Assuming OSC URL, protocol: %s\n", proto);
+    }
+
+    if (!(monome = monome_platform_load_protocol(proto))) {
+        printf("Debug: Failed to load protocol: %s\n", proto);
+        goto err_init;
+    }
+    printf("Debug: Successfully loaded protocol.\n");
+
+    va_start(arguments, dev);
+    error = monome->open(monome, dev, serial, m, arguments);
+    va_end(arguments);
+    printf("Debug: monome->open returned: %d\n", error);
+
+    if (error) {
+        printf("Debug: Error occurred in monome->open.\n");
+        goto err_init;
+    }
+
+    monome->proto = proto;
+    printf("Debug: Protocol set to: %s\n", monome->proto);
+
+    if (!(monome->device = m_strdup(dev))) {
+        printf("Debug: Memory allocation failed for monome->device.\n");
+        goto err_nomem;
+    }
+
+    printf("Debug: Device name set to: %s\n", monome->device);
+    monome->rotation = MONOME_ROTATE_0;
+    printf("Debug: Rotation set to: %d\n", monome->rotation);
+
+    return monome;
+
+err_init:
+    printf("Debug: Error during initialization, cleaning up...\n");
+    // Add any cleanup logic if needed
+    return NULL;
+
+err_nomem:
+    printf("Debug: Memory allocation error occurred.\n");
+    // Add logic for handling memory errors if needed
+    return NULL;
+    }
+
+
+void monome_close(monome_t *monome) {
+	assert(monome);
+
+	if( monome->serial )
+		m_free((char *) monome->serial);
+
+	if( monome->device )
+		m_free((char *) monome->device);
+
+	monome->close(monome);
+	monome_platform_free(monome);
+}
+
+const char *monome_get_serial(monome_t *monome) {
+	return monome->serial;
+}
+
+const char *monome_get_devpath(monome_t *monome) {
+	return monome->device;
+}
+
+const char *monome_get_friendly_name(monome_t *monome) {
+	return monome->friendly;
+}
+
+const char *monome_get_proto(monome_t *monome) {
+	return monome->proto;
+}
+
+int monome_get_rows(monome_t *monome) {
+	if( ROTSPEC(monome).flags & ROW_COL_SWAP )
+		return monome->cols;
+	else
+		return monome->rows;
+}
+
+int monome_get_cols(monome_t *monome) {
+	if( ROTSPEC(monome).flags & ROW_COL_SWAP )
+		return monome->rows;
+	else
+		return monome->cols;
+}
+
+monome_rotate_t monome_get_rotation(monome_t *monome) {
+	return monome->rotation;
+}
+
+void monome_set_rotation(monome_t *monome, monome_rotate_t rotation) {
+	monome->rotation = rotation & 3;
+}
+
+int monome_register_handler(monome_t *monome, monome_event_type_t event_type,
+                            monome_event_callback_t cb, void *data) {
+	monome_callback_t *handler;
+
+	if( event_type >= MONOME_EVENT_MAX )
+		return EINVAL;
+
+	handler       = &monome->handlers[event_type];
+	handler->cb   = cb;
+	handler->data = data;
+
+	return 0;
+}
+
+int monome_unregister_handler(monome_t *monome,
+                              monome_event_type_t event_type) {
+	return monome_register_handler(monome, event_type, NULL, NULL);
+}
+
+int monome_event_next(monome_t *monome, monome_event_t *e) {
+	e->monome = monome;
+
+	return monome->next_event(monome, e);
+}
+
+int monome_event_handle_next(monome_t *monome) {
+	monome_callback_t *handler;
+	monome_event_t e;
+	int status;
+
+	status = monome_event_next(monome, &e);
+	if (status <= 0)
+		return status;
+
+	handler = &monome->handlers[e.event_type];
+
+	if( !handler->cb )
+		return 0;
+
+	handler->cb(&e, handler->data);
+	return 1;
+}
+
+int monome_get_fd(monome_t *monome) {
+	return monome->fd;
+}
+
+#define REQUIRE(capability) if (!monome->capability) return -1
+
+int monome_led_set(monome_t *monome, uint_t x, uint_t y, uint_t on) {
+	REQUIRE(led);
+	return monome->led->set(monome, x, y, on);
+}
+
+int monome_led_on(monome_t *monome, uint_t x, uint_t y) {
+	REQUIRE(led);
+	return monome_led_set(monome, x, y, 1);
+}
+
+int monome_led_off(monome_t *monome, uint_t x, uint_t y) {
+	REQUIRE(led);
+	return monome_led_set(monome, x, y, 0);
+}
+
+int monome_led_all(monome_t *monome, uint_t status) {
+	REQUIRE(led);
+	return monome->led->all(monome, status);
+}
+
+int monome_led_map(monome_t *monome, uint_t x_off, uint_t y_off,
+                   const uint8_t *data) {
+	REQUIRE(led);
+	return monome->led->map(monome, x_off, y_off, data);
+}
+
+int monome_led_row(monome_t *monome, uint_t x_off, uint_t y,
+				   size_t count, const uint8_t *data) {
+	REQUIRE(led);
+	return monome->led->row(monome, x_off, y, count, data);
+}
+
+int monome_led_col(monome_t *monome, uint_t x, uint_t y_off,
+				   size_t count, const uint8_t *data) {
+	REQUIRE(led);
+	return monome->led->col(monome, x, y_off, count, data);
+}
+
+int monome_led_intensity(monome_t *monome, uint_t brightness) {
+	REQUIRE(led);
+	return monome->led->intensity(monome, brightness);
+}
+
+int monome_led_level_set(monome_t *monome, uint_t x, uint_t y, uint_t level) {
+	REQUIRE(led_level);
+	return monome->led_level->set(monome, x, y, level);
+}
+
+int monome_led_level_all(monome_t *monome, uint_t level) {
+	REQUIRE(led_level);
+	return monome->led_level->all(monome, level);
+}
+
+int monome_led_level_map(monome_t *monome, uint_t x_off, uint_t y_off,
+                         const uint8_t *data) {
+	REQUIRE(led_level);
+	return monome->led_level->map(monome, x_off, y_off, data);
+}
+
+int monome_led_level_row(monome_t *monome, uint_t x_off, uint_t y,
+                         size_t count, const uint8_t *data) {
+	REQUIRE(led_level);
+	return monome->led_level->row(monome, x_off, y, count, data);
+}
+
+int monome_led_level_col(monome_t *monome, uint_t x, uint_t y_off,
+                         size_t count, const uint8_t *data) {
+	REQUIRE(led_level);
+	return monome->led_level->col(monome, x, y_off, count, data);
+}
+
+int monome_event_get_grid(const monome_event_t *e, unsigned int *out_x, unsigned int *out_y, monome_t **monome) {
+	*out_x = e->grid.x;
+	*out_y = e->grid.y;
+	*monome = e->monome;
+	return 0;
+}
+
+int monome_led_ring_set(monome_t *monome, uint_t ring, uint_t led,
+                        uint_t level) {
+	REQUIRE(led_ring);
+	return monome->led_ring->set(monome, ring, led, level);
+}
+
+int monome_led_ring_all(monome_t *monome, uint_t ring, uint_t level) {
+	REQUIRE(led_ring);
+	return monome->led_ring->all(monome, ring, level);
+}
+
+int monome_led_ring_map(monome_t *monome, uint_t ring, const uint8_t *levels) {
+	REQUIRE(led_ring);
+	return monome->led_ring->map(monome, ring, levels);
+}
+
+int monome_led_ring_range(monome_t *monome, uint_t ring, uint_t start,
+                          uint_t end, uint_t level) {
+	REQUIRE(led_ring);
+	return monome->led_ring->range(monome, ring, start, end, level);
+}
+
+int monome_led_ring_intensity(monome_t *monome, uint_t brightness) {
+	REQUIRE(led_ring);
+	return monome->led_ring->intensity(monome, brightness);
+}
+
+int monome_tilt_enable(monome_t *monome, uint_t sensor) {
+	REQUIRE(tilt);
+	return monome->tilt->enable(monome, sensor);
+}
+
+int monome_tilt_disable(monome_t *monome, uint_t sensor) {
+	REQUIRE(tilt);
+	return monome->tilt->disable(monome, sensor);
+}

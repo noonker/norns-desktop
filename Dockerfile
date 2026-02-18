@@ -139,7 +139,7 @@ RUN mkdir -p /tmp/nanomsg && cd /tmp/nanomsg && \
 RUN sudo apt install python-is-python3
 RUN cd /tmp/ && wget https://github.com/monome/libmonome/archive/v$LIBMONOME_VERSION.tar.gz -O libmonome.tar.gz && \
     tar -xvzf libmonome.tar.gz && cd /tmp/libmonome-$LIBMONOME_VERSION && \
-    ./waf configure --disable-udev --disable-osc && \
+    ./waf configure --disable-osc && \
     ./waf && ./waf install && \
     cd / && rm -rf /tmp/libmonome-$LIBMONOME_VERSION && ldconfig
 
@@ -215,6 +215,9 @@ RUN git clone https://github.com/schollz/norns && \
      git checkout $NORNS_TAG && \
      git submodule update --init --recursive
 WORKDIR /home/we/norns
+# Patch device_monitor.c to recognize monome arc (upstream fix not in this fork)
+RUN sed -i 's/strcmp(model, "grid") == 0/strcmp(model, "grid") == 0 || strcmp(model, "arc") == 0/' \
+    /home/we/norns/matron/src/device/device_monitor.c
 RUN wget https://waf.io/waf-2.0.26
 RUN mv waf-2.0.26 waf
 RUN chmod +x waf

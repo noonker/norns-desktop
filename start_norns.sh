@@ -7,6 +7,10 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib64/
 
 sudo /etc/init.d/dbus start
 sudo chown -R we:we /home/we/dust
+# Fix monome device permissions (user namespace remaps GIDs in rootless podman)
+for dev in /dev/ttyACM* /dev/ttyUSB*; do
+    [ -e "$dev" ] && sudo chmod 666 "$dev"
+done
 Xvfb :0 -screen 0 1280x640x16 -fbdir /tmp &
 sleep 0.5
 cd /home/we/ && LOGGER=info /usr/local/go/bin/go run oled-server.go -window-name 'matron' -port 8889 &
