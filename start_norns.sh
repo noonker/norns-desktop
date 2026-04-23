@@ -28,11 +28,4 @@ sleep 0.5
 /home/we/norns/build/ws-wrapper/ws-wrapper ws://*:5555 /home/we/norns/build/matron/matron &
 sleep 0.5
 cd /home/we/maiden && ./maiden server --app ./app/build --data ~/dust --doc ~/norns/doc &
-sleep 0.5
-icecast2 -c /etc/icecast2/icecast.xml &
-sleep 0.5
-darkice -c /etc/darkice.cfg &
-sleep 0.25
-jack_connect crone:output_1 darkice:left
-jack_connect crone:output_2 darkice:right
 tail -f /dev/null # stay alive

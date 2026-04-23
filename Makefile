@@ -1,5 +1,13 @@
 AUDIOGROUP = $(shell getent group audio | cut -d: -f3)
 GRIDGROUP = $(shell getent group dialout | cut -d: -f3)
+GRID_DEVICE = $(shell ls /dev/ttyACM1 2>/dev/null | head -1)
+
+ifdef GRID_DEVICE
+    DEVICE_FLAG = --device $(GRID_DEVICE)
+else
+    DEVICE_FLAG =
+endif
+
 
 build:
 	podman build -t norns-docker .
@@ -30,7 +38,6 @@ run: dust
 		-p 5556:5556 \
 		-p 5900:5900 \
 		-p 8889:8889 \
-		-p 8000:8000 \
 		-v `pwd`/dust:/home/we/dust \
 		-v `pwd`/jackdrc:/etc/jackdrc \
 		-v /run/user/1000/pipewire-0:/run/user/1000/pipewire-0 \
@@ -41,7 +48,7 @@ run: dust
 		-e XDG_RUNTIME_DIR=/run/user/1000 \
 		-p 10111:10111/udp \
 		--group-add $(AUDIOGROUP) \
-		--device /dev/ttyACM1 \
+		$(DEVICE_FLAG) \
 		--group-add $(GRIDGROUP) \
 		-v /run/udev:/run/udev:ro \
 		--user we \

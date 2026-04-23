@@ -166,14 +166,11 @@ RUN apt-get update -q && \
              # display server
              x11-apps \
              imagemagick \
-             icecast2 \
              lame \
              espeak \
              ffmpeg \
              jackd2 \
-             libjack-jackd2-dev \ 
-             vorbis-tools \
-             darkice && \
+             libjack-jackd2-dev && \
      apt-get clean && \
      rm -rf /var/lib/apt/lists/* && \
      pip3 install --break-system-packages tmuxp==1.4.0
@@ -289,8 +286,6 @@ RUN echo "ok"
 COPY ["norns.yaml", "/home/we/.tmuxp/norns.yaml"]
 COPY ["start_norns.sh", "/home/we/"]
 COPY ["tmux.conf", "/home/we/.tmux.conf"]
-COPY icecast.xml /etc/icecast2/icecast.xml
-COPY darkice.cfg /etc/darkice.cfg
 COPY matronrc.lua /home/we/norns/matronrc.lua
 COPY repl-endpoints.json /home/we/maiden_src/dist/maiden/app/build/repl-endpoints.json
 COPY repl-endpoints.json /home/we/maiden_src/web/build/repl-endpoints.json
